@@ -4,9 +4,11 @@ import feign.FeignException;
 import feign.Response;
 import io.github.cesarcosta.msavaliadorcredito.application.exception.DadosClienteNotFoundException;
 import io.github.cesarcosta.msavaliadorcredito.application.exception.ErroComunicacaoMicroserviceException;
+import io.github.cesarcosta.msavaliadorcredito.application.exception.ErroSolicitacaoCartaoException;
 import io.github.cesarcosta.msavaliadorcredito.domain.*;
 import io.github.cesarcosta.msavaliadorcredito.infra.clients.CartaoResourceClient;
 import io.github.cesarcosta.msavaliadorcredito.infra.clients.ClienteResourceClient;
+import io.github.cesarcosta.msavaliadorcredito.infra.mqueue.SolicitacaoEmissaoCartaoPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -22,6 +25,8 @@ public class AvaliadorCreditoService {
 
     private final ClienteResourceClient clienteClient;
     private final CartaoResourceClient cartaoClient;
+
+    private final SolicitacaoEmissaoCartaoPublisher emissaoCartaoPublisher;
 
     public SituacaoCliente obterSituacaoCliente(String cpf)
             throws DadosClienteNotFoundException, ErroComunicacaoMicroserviceException {
@@ -60,7 +65,6 @@ public class AvaliadorCreditoService {
                 var fator = idadeDB.divide(BigDecimal.valueOf(10));
                 BigDecimal limiteAprovado = fator.multiply(limiteBasico);
 
-
                 CartaoAprovado cartaoAprovado = new CartaoAprovado();
                 cartaoAprovado.setCartao(cartao.getNome());
                 cartaoAprovado.setBandeira(cartao.getBandeira());
@@ -79,6 +83,15 @@ public class AvaliadorCreditoService {
 
             throw new ErroComunicacaoMicroserviceException(e.getMessage(), status);
         }
+    }
 
+    public ProtocoloSolicitacaoCartao solicitarEmissaoCartao(DadosSolicitacaoEmissaoCartao dados) {
+        try {
+            emissaoCartaoPublisher.solicitarCartao(dados);
+            var protocolo = UUID.randomUUID().toString();
+            return new ProtocoloSolicitacaoCartao(protocolo);
+        } catch (Exception e) {
+            throw new ErroSolicitacaoCartaoException(e.getMessage());
+        }
     }
 }
